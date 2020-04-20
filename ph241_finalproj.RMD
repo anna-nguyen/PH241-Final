@@ -37,6 +37,6 @@ filtered_data = lapply(1:length(data_list), function(x) data_list[[x]] %>% selec
 
 # Merge data frames
 ```{r}
-full_data = list(filtered_data) %>% reduce(full_join, by = "SEQN")
+full_data = filtered_data %>% reduce(full_join, by = "SEQN")
 head(full_data)
 ```
