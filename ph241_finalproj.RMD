@@ -14,23 +14,21 @@ library(purrr)
 # Load data
 ```{r}
 questionnaire = read.csv("data/questionnaire.csv")
-meds = read.csv("data/medications.csv")
 labs = read.csv("data/labs.csv")
 exams = read.csv("data/examination.csv")
 diet = read.csv("data/diet.csv")
 demog = read.csv("data/demographic.csv")
-data_list = list(questionnaire, meds, labs, exams, diet, demog)
+data_list = list(questionnaire, labs, exams, diet, demog)
 ```
 
 #Filter data to only inlude relevant variables, drop missing values
 ```{r}
 questionnaire_vars = c("SEQN", "FSD032B", "FSD032C", "FSDHH")
-meds_vars = c("SEQN")
 labs_vars = c("SEQN")
 exams_vars = c("SEQN")
 diet_vars = c("SEQN", "DR1TSFAT", "DR1TCARB")
 demog_vars = c("SEQN", "DMDEDUC2", "RIDAGEYR", "RIAGENDR")
-var_list = list(questionnaire_vars, meds_vars, labs_vars, exams_vars, diet_vars, demog_vars)
+var_list = list(questionnaire_vars, labs_vars, exams_vars, diet_vars, demog_vars)
 
 filtered_data = lapply(1:length(data_list), function(x) data_list[[x]] %>% select(var_list[[x]]) %>% drop_na())
 ```
@@ -43,3 +41,5 @@ head(full_data)
 # Check how many observations there are
 length(unique(full_data$SEQN))
 ```
+
+
