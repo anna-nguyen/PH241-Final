@@ -9,6 +9,9 @@ knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
 library(tidyverse)
 library(purrr)
+library(epitools)
+library(lmtest)
+library(biostat3)
 ```
 
 # Load data
@@ -24,22 +27,182 @@ data_list = list(questionnaire, labs, exams, diet, demog)
 #Filter data to only inlude relevant variables, drop missing values
 ```{r}
 questionnaire_vars = c("SEQN", "FSD032B", "FSD032C", "FSDHH")
-labs_vars = c("SEQN")
+labs_vars = c("SEQN", "LBXTC")
 exams_vars = c("SEQN")
-diet_vars = c("SEQN", "DR1TSFAT", "DR1TCARB")
+diet_vars = c("SEQN", "DR1TTFAT", "DR1TSFAT", "DR1TCARB")
 demog_vars = c("SEQN", "DMDEDUC2", "RIDAGEYR", "RIAGENDR")
 var_list = list(questionnaire_vars, labs_vars, exams_vars, diet_vars, demog_vars)
 
-filtered_data = lapply(1:length(data_list), function(x) data_list[[x]] %>% select(var_list[[x]]) %>% drop_na())
+filtered_data = lapply(1:length(data_list), function(x) data_list[[x]] %>% dplyr::select(var_list[[x]]))
 ```
 
 # Merge data frames
 ```{r}
-full_data = filtered_data %>% reduce(full_join, by = "SEQN")
-head(full_data)
+full_data = filtered_data %>% reduce(full_join, by = "SEQN") %>% dplyr::select("SEQN", "DR1TTFAT", "LBXTC", "FSDHH") %>% drop_na()
+colnames(full_data) = c("id", "fat_intake", "tot_chol", "food_security")
+head(full_data) 
 
 # Check how many observations there are
-length(unique(full_data$SEQN))
+nrow(full_data)
+```
+
+-----------------------------------
+Exposure = total daily fat intake
+- Standardize using sample mean and SD
+-----------------------------------
+
+Transform X = full_data such that 
+
+$$X^* = \frac{X - \mu_X}{\sigma_X}$$
+
+```{r}
+mu = mean(full_data$fat_intake)
+sigma = sd(full_data$fat_intake)
+
+full_data = full_data %>% mutate(fat_intake_transform = (fat_intake - mu) / sigma)
 ```
 
 
+-----------------------------------
+Outcome = cholesterol level
+- High cholesterol level: tot_chol >= 240 mg/dL
+- Normal cholesterol level: 160 <= tot_chol < 240mg/dL
+- Low cholesterol level: tot_chol < 160 mg/dL (values dropped from data)
+-----------------------------------
+
+Let $Y$ represent cholesterol level such that 
+
+$$Y=\begin{cases} 1, \text{if tot_chol} \geq \text{240 mg/dL} \\
+                  0, \text{if tot_chol < 240 mg/dL} \end{cases}$$
+
+```{r}
+full_data = full_data %>% filter(tot_chol >= 160) %>%  
+                          mutate(tot_chol = ifelse(tot_chol >= 240, 1, 0))
+```
+
+-----------------------------------
+Confounding = household food security level
+- Full security: 0
+- Marginal security: 1
+- Low security: 2
+- Very low security: 3
+-----------------------------------
+
+Let $Z_i$ be an indicator of household food security level i
+
+$$Z_0 = \begin{cases} 1, \text{if Full security} \\ 
+                      0, \text{else} \end{cases}$$
+
+$$Z_1 = \begin{cases} 1, \text{if Marginal security} \\ 
+                      0, \text{else} \end{cases}$$
+                     
+$$Z_2 = \begin{cases} 1, \text{if Low security} \\ 
+                      0, \text{else} \end{cases}$$
+
+$$Z_3 = \begin{cases} 1, \text{if Very Low security} \\ 
+                      0, \text{else} \end{cases}$$
+
+Addionally, let $Z$ represent household food security level such that 
+
+$$Z=\begin{cases} 0, \text{if Full security} \\
+                  1, \text{if Marginal security} \\
+                  2, \text{if Low security} \\
+                  3, \text{if Very low security} \end{cases}$$
+                  
+```{r}
+full_data = full_data %>% mutate(food_security = food_security-1)
+```
+
+
+# Model 1
+
+$$log(\frac{p_x}{1-p_x}) = \alpha$$
+
+```{r}
+model1 = glm(formula = tot_chol ~ 1, 
+             family = binomial(link='logit'), data = full_data)
+
+summary(model1)
+exp(model1$coefficients)
+logLik(model1)
+```
+
+# Model 2
+
+$$log(\frac{p_x}{1-p_x}) = \alpha + \beta X$$
+- Where X = 
+
+```{r}
+model2 = glm(formula = tot_chol ~ fat_intake, 
+             family = binomial(link='logit'), data = full_data)
+
+summary(model2)
+exp(model2$coefficients)
+logLik(model2)
+```
+
+# Model 3
+
+$$log(\frac{p_x}{1-p_x}) = \alpha + \beta X^*$$
+
+```{r}
+model3 = glm(formula = tot_chol ~ fat_intake_transform, 
+             family = binomial(link='logit'), data = full_data)
+
+summary(model3)
+exp(model3$coefficients)
+logLik(model3)
+```
+
+# Model 4
+
+$$log(\frac{p_x}{1-p_x}) = \alpha + \beta X + \gamma_2 Z_2 + \gamma_3 Z_3 + \gamma_4 Z_4$$
+- Using Z = 1 (Full security) as the reference level
+
+```{r}
+model4 = glm(formula = tot_chol ~ fat_intake + as.factor(food_security), 
+             family = binomial(link='logit'), data = full_data)
+
+summary(model4)
+exp(model4$coefficients)
+logLik(model4)
+```
+
+# Model 5
+
+$$log(\frac{p_x}{1-p_x}) = \alpha + \beta X + \gamma Z$$
+
+```{r}
+model5= glm(formula = tot_chol ~ fat_intake + food_security, 
+            family = binomial(link='logit'), data = full_data)
+
+summary(model5)
+exp(model5$coefficients)
+logLik(model5)
+```
+
+# Model 6
+
+$$log(\frac{p_x}{1-p_x}) = \alpha + \beta X + \gamma Z + \zeta (X \times Z)$$
+
+```{r}
+model6 = glm(formula = tot_chol ~ fat_intake + food_security + fat_intake:food_security, 
+             family = binomial(link='logit'), data = full_data)
+
+summary(model6)
+exp(model6$coefficients)
+logLik(model6)
+```
+
+# Model 7
+
+$$log(\frac{p_x}{1-p_x}) = \alpha + \beta X + \gamma_1 Z_1 + \gamma_2 Z_2 + \gamma_3 Z_3 + \zeta_1(X \times Z_1) + \zeta_2(X \times Z_2) + \zeta_3(X \times Z_3) + \zeta_4(X \times Z_4)$$
+
+```{r}
+model7 = glm(formula = tot_chol ~ fat_intake + as.factor(food_security) + fat_intake:as.factor(food_security), 
+             family = binomial(link='logit'), data = full_data)
+
+summary(model7)
+exp(model6$coefficients)
+logLik(model6)
+```
