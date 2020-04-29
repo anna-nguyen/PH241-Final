@@ -1,6 +1,6 @@
 ---
 title: "Exploring the Relationship between Fat Intake and Cholesterol Levels"
-author: "Anna Nguyen, Allyson Ling ,Bonnie Xu, Jennifer DeGuzman, Christine Le"
+author: "Anna Nguyen, Allyson Ling , Bonnie Xu, Jennifer DeGuzman, Christine Le"
 date: "May 10, 2020"
 output: pdf_document
 ---
@@ -130,7 +130,7 @@ logLik(model1)
 # Model 2
 
 $$log(\frac{p_x}{1-p_x}) = \alpha + \beta X$$
-- Where X = 
+- Where X = fat intake
 
 ```{r}
 model2 = glm(formula = tot_chol ~ fat_intake, 
@@ -140,6 +140,8 @@ summary(model2)
 exp(model2$coefficients)
 logLik(model2)
 ```
+
+P-value for fat variable is 0.663.
 
 # Model 3
 
@@ -168,6 +170,9 @@ exp(model4$coefficients)
 logLik(model4)
 ```
 
+No feature has a significant p-value.
+
+
 # Model 5
 
 $$log(\frac{p_x}{1-p_x}) = \alpha + \beta X + \gamma Z$$
@@ -181,6 +186,8 @@ exp(model5$coefficients)
 logLik(model5)
 ```
 
+No feature has a significant p-value.
+
 # Model 6
 
 $$log(\frac{p_x}{1-p_x}) = \alpha + \beta X + \gamma Z + \zeta (X \times Z)$$
@@ -192,7 +199,14 @@ model6 = glm(formula = tot_chol ~ fat_intake + food_security + fat_intake:food_s
 summary(model6)
 exp(model6$coefficients)
 logLik(model6)
+lrtest(model6)
 ```
+
+Interaction term has p-value of 0.0817.
+Fat intake has p-value of 0.1988.
+Food security has p-value of 0.1094.
+
+LRT gives chi-square statistic of 3.1927 with a corresponding p-value of 0.3629.
 
 # Model 7
 
@@ -203,6 +217,12 @@ model7 = glm(formula = tot_chol ~ fat_intake + as.factor(food_security) + fat_in
              family = binomial(link='logit'), data = full_data)
 
 summary(model7)
-exp(model6$coefficients)
-logLik(model6)
+exp(model7$coefficients)
+logLik(model7)
+lrtest(model7)
 ```
+
+All p-values are above 0.1. Fail to reject null-hypothesis for LRT.
+
+
+
