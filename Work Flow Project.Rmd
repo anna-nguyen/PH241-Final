@@ -1,0 +1,232 @@
+---
+title: "Exploring the Relationship between Fat Intake and Cholesterol Levels"
+author: "Anna Nguyen, Allyson Ling , Bonnie Xu, Jennifer DeGuzman, Christine Le"
+date: "May 10, 2020"
+output: pdf_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tidyverse)
+library(purrr)
+library(epitools)
+library(lmtest)
+library(biostat3)
+library(broom)
+```
+
+# Load data
+```{r}
+questionnaire = read.csv("data/questionnaire.csv")
+labs = read.csv("data/labs.csv")
+exams = read.csv("data/examination.csv")
+diet = read.csv("data/diet.csv")
+demog = read.csv("data/demographic.csv")
+data_list = list(questionnaire, labs, exams, diet, demog)
+```
+
+#Filter data to only inlude relevant variables, drop missing values
+```{r}
+questionnaire_vars = c("SEQN", "FSD032B", "FSD032C", "FSDHH")
+labs_vars = c("SEQN", "LBXTC", "LBDLDL")
+exams_vars = c("SEQN")
+diet_vars = c("SEQN", "DR1TTFAT", "DR1TSFAT", "DR1TCARB")
+demog_vars = c("SEQN", "DMDEDUC2", "RIDAGEYR", "RIAGENDR")
+var_list = list(questionnaire_vars, labs_vars, exams_vars, diet_vars, demog_vars)
+
+filtered_data = lapply(1:length(data_list), function(x) data_list[[x]] %>% dplyr::select(var_list[[x]]))
+```
+
+# Merge data frames
+```{r}
+full_data = filtered_data %>% reduce(full_join, by = "SEQN") %>% dplyr::select("SEQN", "DR1TTFAT", "LBXTC", "FSDHH", "RIDAGEYR", "RIAGENDR", "DR1TSFAT", "DR1TCARB") %>% drop_na()
+colnames(full_data) = c("id", "fat_intake", "tot_chol", "food_security", "age", "gender", "saturated_fat", "carbohydrate")
+head(full_data) 
+
+# Check how many observations there are
+nrow(full_data)
+```
+
+
+-----------------------------------
+Outcome = cholesterol level
+- High cholesterol level: tot_chol >= 240 mg/dL
+- Normal cholesterol level: 160 <= tot_chol < 240mg/dL
+- Low cholesterol level: tot_chol < 160 mg/dL (values dropped from data)
+-----------------------------------
+
+Let $Y$ represent cholesterol level such that 
+
+$$Y=\begin{cases} 1, \text{if tot_chol} \geq \text{240 mg/dL} \\
+                  0, \text{if tot_chol < 240 mg/dL} \end{cases}$$
+
+```{r}
+full_data = full_data %>% filter(tot_chol >= 160) %>%  
+                          mutate(tot_chol = ifelse(tot_chol >= 240, 1, 0))
+```
+
+-----------------------------------
+Confounding = household food security level
+- Full security: 0
+- Marginal security: 1
+- Low security: 2
+- Very low security: 3
+-----------------------------------
+
+Let $Z_i$ be an indicator of household food security level i
+
+$$Z_0 = \begin{cases} 1, \text{if Full security} \\ 
+                      0, \text{else} \end{cases}$$
+
+$$Z_1 = \begin{cases} 1, \text{if Marginal security} \\ 
+                      0, \text{else} \end{cases}$$
+                     
+$$Z_2 = \begin{cases} 1, \text{if Low security} \\ 
+                      0, \text{else} \end{cases}$$
+
+$$Z_3 = \begin{cases} 1, \text{if Very Low security} \\ 
+                      0, \text{else} \end{cases}$$
+
+Addionally, let $Z$ represent household food security level such that 
+
+$$Z=\begin{cases} 0, \text{if Full security} \\
+                  1, \text{if Marginal security} \\
+                  2, \text{if Low security} \\
+                  3, \text{if Very low security} \end{cases}$$
+                  
+```{r}
+full_data = full_data %>% mutate(food_security = food_security-1)
+```
+
+
+-----------------------
+Possible third variabe: Age
+
+$A = \text{age at interview, as a continuous variable} $
+----------------------
+
+----------------------
+Possible third variable : Gender
+Self-reported Gender at Interview
+$$ G = \begin{cases} 1, \text{Female} \\
+                     0, \text{Male} \end{cases}
+                     $$
+```{r}
+full_data <- full_data %>% mutate(gender = gender -1)
+```
+
+
+# Model 1
+
+$log(\frac{p_x}{1-p_x}) = \alpha$
+
+```{r}
+model1 = glm(formula = tot_chol ~ 1, 
+             family = binomial(link='logit'), data = full_data)
+
+summary(model1)
+exp(model1$coefficients)
+logLik(model1)
+```
+
+# Model 2 relationship of interest
+
+$log(\frac{p_x}{1-p_x}) = \alpha + \beta X$
+- Where X = fat intake
+
+```{r}
+
+
+model2 = glm(formula = tot_chol ~ fat_intake, 
+             family = binomial(link='logit'), data = full_data)
+
+summary(model2)
+lrtest(model2)
+```
+
+
+# Model 3 food security as an categorical ordinal variable
+
+$log(\frac{p_x}{1-p_x}) = \alpha + \gamma_2 Z_2 + \gamma_3 Z_3 + \gamma_4 Z_4$
+- Using Z = 1 (Full security) as the reference level
+
+```{r}
+model3 = glm(formula = tot_chol ~ as.factor(food_security), 
+             family = binomial(link='logit'), data = full_data)
+
+summary(model3)
+
+```
+
+
+
+
+# Model 4 food security as a continuous variable
+
+$log(\frac{p_x}{1-p_x}) = \alpha +  \gamma Z$
+
+```{r}
+model4= glm(formula = tot_chol ~ food_security, 
+            family = binomial(link='logit'), data = full_data)
+
+summary(model4)
+
+```
+
+
+
+# Model 5 
+#evaluate whether age is a confounder for the relationship between total fat intake and cholesterol
+$log(\frac{p_x}{1-p_x}) = \alpha +  \gamma A$
+```{r}
+model5 <- glm(tot_chol ~ age, family = binomial(link = 'logit'), data = full_data)
+summary(model5)
+
+```
+
+#model 6
+is there confounding by gender in the relationship between fat intake and total cholesterol
+$log(\frac{p_x}{1-p_x}) = \alpha + \gamma G$
+```{r}
+model6 <- glm(tot_chol ~ as.factor(gender), family = binomial(link = 'logit'), data = full_data)
+
+summary(model6)
+
+```
+
+#model 7 evaluate carbohydrate as a confounder
+$log(\frac{p_x}{1-p_x}) = \alpha + \zeta C $
+
+```{r}
+model7 <- glm(tot_chol ~ carbohydrate, family = binomial(link = 'logit'), data = full_data)
+summary(model7)
+```
+
+
+#Although food security as a categorical variable has some liberal significance p<0.2 in a univariate model. Now we put them all together, removing gender and food security.
+
+#model 8
+$$log(\frac{p_x}{1-p_x}) = \alpha +  \beta X + \gamma A + \zeta C$$
+```{r}
+model8 <- glm(tot_chol ~ fat_intake + age + carbohydrate, family = binomial(link = 'logit'), data = full_data)
+
+summary(model8)
+
+
+
+
+```
+
+#We remove carbohydrate as this is not a signficant predictor of total cholesterol P >0.2 and examine the interaction effects of the two remaining variables, fat intake our variable of interest and age.
+#model 9
+$log(\frac{p_x}{1-p_x}) = \alpha + \beta X + \gamma A + \zeta {X*A}$
+```{r}
+model9 <- glm(tot_chol ~ fat_intake * age, family = binomial(link = 'logit'), data = full_data)
+
+summary(model9)
+
+```
+
+We see here that the p-value of the interaction is less than our cut off of p- value 0.1 and our final model is 
+$log(\frac{p_x}{1-p_x}) = \alpha + \beta X + \gamma A $
+
