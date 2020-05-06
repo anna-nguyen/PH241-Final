@@ -1,0 +1,150 @@
+---
+title: "work flow 2"
+author: "Christine Le"
+date: "5/1/2020"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+title: "Exploring the Relationship between Fat Intake and Cholesterol Levels"
+author: "Anna Nguyen, Allyson Ling , Bonnie Xu, Jennifer DeGuzman, Christine Le"
+date: "May 10, 2020"
+output: pdf_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tidyverse)
+library(purrr)
+library(epitools)
+library(lmtest)
+library(biostat3)
+library(broom)
+```
+
+# Load data
+```{r}
+questionnaire = read.csv("C:/Users/me/Downloads/PH241-Final-master/PH241-Final-master/data/questionnaire.csv")
+labs = read.csv("C:/Users/me/Downloads/PH241-Final-master/PH241-Final-master/data/labs.csv")
+exams = read.csv("C:/Users/me/Downloads/PH241-Final-master/PH241-Final-master/data/examination.csv")
+diet = read.csv("C:/Users/me/Downloads/PH241-Final-master/PH241-Final-master/data//diet.csv")
+demog = read.csv("C:/Users/me/Downloads/PH241-Final-master/PH241-Final-master/data//demographic.csv")
+data_list = list(questionnaire, labs, exams, diet, demog)
+```
+
+#Filter data to only inlude relevant variables, drop missing values
+```{r}
+questionnaire_vars = c("SEQN", "FSD032B", "FSD032C", "FSDHH")
+labs_vars = c("SEQN", "LBXTC", "LBDLDL")
+exams_vars = c("SEQN")
+diet_vars = c("SEQN", "DR1TTFAT", "DR1TSFAT", "DR1TCARB")
+demog_vars = c("SEQN", "DMDEDUC2", "RIDAGEYR", "RIAGENDR")
+var_list = list(questionnaire_vars, labs_vars, exams_vars, diet_vars, demog_vars)
+
+filtered_data = lapply(1:length(data_list), function(x) data_list[[x]] %>% dplyr::select(var_list[[x]]))
+```
+
+# Merge data frames
+```{r}
+full_data = filtered_data %>% reduce(full_join, by = "SEQN") %>% dplyr::select("SEQN", "DR1TTFAT", "LBXTC", "FSDHH", "RIDAGEYR", "RIAGENDR", "DR1TSFAT", "DR1TCARB") %>% drop_na()
+colnames(full_data) = c("id", "fat_intake", "tot_chol", "food_security", "age", "gender", "saturated_fat", "carbohydrate")
+head(full_data) 
+
+# Check how many observations there are
+nrow(full_data)
+```
+
+
+-----------------------------------
+Outcome = cholesterol level
+- High cholesterol level: tot_chol >= 240 mg/dL
+- Normal cholesterol level: 160 <= tot_chol < 240mg/dL
+- Low cholesterol level: tot_chol < 160 mg/dL (values dropped from data)
+-----------------------------------
+
+Let $Y$ represent cholesterol level such that 
+
+$$Y=\begin{cases} 1, \text{if tot_chol} \geq \text{240 mg/dL} \\
+                  0, \text{if tot_chol < 240 mg/dL} \end{cases}$$
+
+```{r}
+full_data = full_data %>% filter(tot_chol >= 160) %>%  
+                          mutate(tot_chol = ifelse(tot_chol >= 240, 1, 0))
+```
+
+-----------------------------------
+Confounding = household food security level
+- Full security: 0
+- Marginal security: 1
+- Low security: 2
+- Very low security: 3
+-----------------------------------
+
+Let $Z_i$ be an indicator of household food security level i
+
+$$Z_0 = \begin{cases} 1, \text{if Full security} \\ 
+                      0, \text{else} \end{cases}$$
+
+$$Z_1 = \begin{cases} 1, \text{if Marginal security} \\ 
+                      0, \text{else} \end{cases}$$
+                     
+$$Z_2 = \begin{cases} 1, \text{if Low security} \\ 
+                      0, \text{else} \end{cases}$$
+
+$$Z_3 = \begin{cases} 1, \text{if Very Low security} \\ 
+                      0, \text{else} \end{cases}$$
+
+Addionally, let $Z$ represent household food security level such that 
+
+$$Z=\begin{cases} 0, \text{if Full security} \\
+                  1, \text{if Marginal security} \\
+                  2, \text{if Low security} \\
+                  3, \text{if Very low security} \end{cases}$$
+                  
+```{r}
+full_data = full_data %>% mutate(food_security = food_security-1)
+```
+
+
+-----------------------
+Possible third variabe: Age
+
+$$A = \text{age at interview, as a continuous variable} $$
+----------------------
+
+----------------------
+Possible third variable : Gender
+Self-reported Gender at Interview
+$$ G = \begin{cases} 1, \text{Female} \\
+                     0, \text{Male} \end{cases}
+                     $$
+```{r}
+full_data <- full_data %>% mutate(gender = gender -1)
+```
+
+#Model 1
+
+```{r}
+model1 <- glm(tot_chol ~ fat_intake * as.factor(food_security) + fat_intake *age + fat_intake * gender + fat_intake *carbohydrate + age*gender, family = binomial(link = 'logit'), data = full_data)
+
+summary(model1)
+```
+
+#Model 2 model without significant interaction
+```{r}
+model2 <- glm(tot_chol ~ fat_intake + age + gender + carbohydrate + as.factor(food_security) + age*gender, family = binomial(link = 'logit'), data = full_data)
+
+summary(model2)
+lrtest(model1, model2)
+```
+
+#Model 3 model without significant confounders
+
+```{r}
+model3 <- glm(tot_chol ~ fat_intake + age + gender + age*gender, family = binomial(link = 'logit'), data = full_data)
+
+summary(model3)
+lrtest(model2, model3)
+```
+
