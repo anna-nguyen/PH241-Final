@@ -1,17 +1,10 @@
 ---
-title: "work flow 2"
-author: "Christine Le"
-date: "5/1/2020"
-output:
-  word_document: default
-  pdf_document: default
-  html_document: default
----
 title: "Exploring the Relationship between Fat Intake and Cholesterol Levels"
 author: "Anna Nguyen, Allyson Ling , Bonnie Xu, Jennifer DeGuzman, Christine Le"
 date: "May 10, 2020"
 output: pdf_document
 ---
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
@@ -148,3 +141,26 @@ summary(model3)
 lrtest(model2, model3)
 ```
 
+#Model Visualizations
+
+```{r}
+full_data$pred_risk <- predict(model3, type = "response", newdata = full_data)
+full_data$Gender = as.factor(full_data$gender)
+levels(full_data$Gender) = c("Male","Female")
+
+full_data <- full_data %>%
+  mutate(pred_odds = pred_risk/(1-pred_risk)) %>%
+  mutate(pred_log_odds = log(pred_odds))
+
+ggplot(full_data, aes(x = age, y = pred_log_odds, color = Gender)) +
+  geom_point() +
+  xlab("Age") +
+  ylab("Predicted Log Odds of Total Cholesterol") +
+  ggtitle("Age vs. Total Cholesterol by Gender")
+
+ggplot(full_data, aes(x = fat_intake, y = pred_log_odds, color = Gender)) +
+  geom_point() +
+  xlab("Total Fat Intake") +
+  ylab("Predicted Log Odds of Total Cholesterol") +
+  ggtitle("Total Fat Intake vs. Total Cholesterol by Gender")
+```
